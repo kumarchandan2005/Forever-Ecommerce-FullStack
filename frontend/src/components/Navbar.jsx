@@ -43,7 +43,7 @@ const Navbar = () => {
           <p>Contact</p>
           <hr className="w-2/4 border-none h-[1.5px] bg-gray-700 hidden" />
         </NavLink>
-        {/* <NavLink
+        <NavLink
           className="flex flex-col items-center gap-1"
           to={import.meta.env.VITE_ADMIN_URL}
           target="_blank"
@@ -52,7 +52,7 @@ const Navbar = () => {
             Admin Panel
           </p>
           <hr className="w-2/4 border-none h-[1.5px] bg-gray-700 hidden" />
-        </NavLink> */}
+        </NavLink>
       </ul>
 
       <div className="flex items-center gap-6">

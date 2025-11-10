@@ -36,25 +36,71 @@ const loginUser = async (req, res) => {
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    // checking for user if already registered
+
+    // Check if user already exists
     const exists = await userModel.findOne({ email });
     if (exists) {
       return res.json({ success: false, message: "User already exists" });
     }
-    // validating email format and strong password
+
+    // Validate email format
     if (!validator.isEmail(email)) {
       return res.json({
         success: false,
-        message: "Please Enter a valid Email",
+        message: "Please enter a valid email address",
       });
     }
+
+    // Validate password length
     if (password.length < 8) {
       return res.json({
         success: false,
-        message:
-          "Password Length must be greater than or equal to 8 characters",
+        message: "Password must be at least 8 characters long",
       });
     }
+
+    // ✅ Check if first character is uppercase
+    if (!/^[A-Z]/.test(password)) {
+      return res.json({
+        success: false,
+        message: "Password must start with a capital letter",
+      });
+    }
+
+    // ✅ Check if password contains at least one special character
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return res.json({
+        success: false,
+        message:
+          "Password must contain at least one special symbol (e.g. @, #, $, %)",
+      });
+    }
+
+    // ✅ You can also add optional checks (for digits, lowercase, etc.)
+    if (!/[0-9]/.test(password)) {
+      return res.json({
+        success: false,
+        message: "Password must contain at least one number",
+      });
+    }
+
+    // If all validations pass — continue registration
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new userModel({
+      name,
+      email,
+      password: hashedPassword,
+    });
+
+    await newUser.save();
+
+    res.json({ success: true, message: "User registered successfully" });
+  } catch (error) {
+    console.error(error);
+    res.json({ success: false, message: "Error registering user" });
+  }
+};
+
 
     // Hasing User Password
     const salt = await bcrypt.genSalt(10);
@@ -67,20 +113,21 @@ const registerUser = async (req, res) => {
       password: hashedPassword,
     });
 
-    const user = await newUser.save();
+   try {
+  const user = await newUser.save();
 
-    const token = createToken(user._id);
+  const token = createToken(user._id);
 
-    res.json({
-      success: true,
-      message: "User registered successfully",
-      token,
-    });
-  } catch (error) {
-    console.log(error);
-    res.json({ success: false, message: error.message });
-  }
-};
+  res.json({
+    success: true,
+    message: "User registered successfully",
+    token,
+  });
+} catch (error) {
+  console.log(error);
+  res.json({ success: false, message: error.message });
+}
+
 
 // Route for admin login
 const adminLogin = async (req, res) => {
