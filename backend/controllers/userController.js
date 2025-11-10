@@ -3,36 +3,42 @@ import validator from "validator";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
+
 const createToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET);
+  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
-// Route for user login
+// 🧑‍💻 User Login
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // check if the user is not exist
+    // Check if user exists
     const user = await userModel.findOne({ email });
     if (!user) {
       return res.json({ success: false, message: "User not found" });
     }
+
+    // Compare passwords
     const isMatched = await bcrypt.compare(password, user.password);
     if (!isMatched) {
-      return res.json({
-        success: false,
-        message: "Invalid credentials",
-      });
+      return res.json({ success: false, message: "Invalid credentials" });
     }
+
+    // Create token
     const token = createToken(user._id);
-    res.json({ success: true, message: "User credentials are correct", token });
+    res.json({
+      success: true,
+      message: "User logged in successfully",
+      token,
+    });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// Route for user registration
+// 🧾 User Registration
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -43,7 +49,7 @@ const registerUser = async (req, res) => {
       return res.json({ success: false, message: "User already exists" });
     }
 
-    // Validate email format
+    // Validate email
     if (!validator.isEmail(email)) {
       return res.json({
         success: false,
@@ -51,7 +57,7 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Validate password length
+    // Validate password
     if (password.length < 8) {
       return res.json({
         success: false,
@@ -59,7 +65,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // ✅ Check if first character is uppercase
     if (!/^[A-Z]/.test(password)) {
       return res.json({
         success: false,
@@ -67,7 +72,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // ✅ Check if password contains at least one special character
     if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
       return res.json({
         success: false,
@@ -76,7 +80,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // ✅ You can also add optional checks (for digits, lowercase, etc.)
     if (!/[0-9]/.test(password)) {
       return res.json({
         success: false,
@@ -84,89 +87,66 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // If all validations pass — continue registration
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Save new user
     const newUser = new userModel({
       name,
       email,
       password: hashedPassword,
     });
 
-    await newUser.save();
+    const user = await newUser.save();
+    const token = createToken(user._id);
 
-    res.json({ success: true, message: "User registered successfully" });
+    res.json({
+      success: true,
+      message: "User registered successfully",
+      token,
+    });
   } catch (error) {
     console.error(error);
     res.json({ success: false, message: "Error registering user" });
   }
 };
 
-
-    // Hasing User Password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Creating new user
-    const newUser = new userModel({
-      name,
-      email,
-      password: hashedPassword,
-    });
-
-   try {
-  const user = await newUser.save();
-
-  const token = createToken(user._id);
-
-  res.json({
-    success: true,
-    message: "User registered successfully",
-    token,
-  });
-} catch (error) {
-  console.log(error);
-  res.json({ success: false, message: error.message });
-}
-
-
-// Route for admin login
+// 👑 Admin Login
 const adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (
       email === process.env.ADMIN_EMAIL &&
       password === process.env.ADMIN_PASSWORD
     ) {
-      const token = jwt.sign(email + password, process.env.JWT_SECRET);
-      res.json({ success: true, token: token });
+      const token = jwt.sign(
+        { email, role: "admin" },
+        process.env.JWT_SECRET,
+        { expiresIn: "1d" }
+      );
+      res.json({ success: true, token });
     } else {
       res.json({ success: false, message: "Invalid credentials" });
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// Route for password change
+// 🔁 Change Password
 const changePassword = async (req, res) => {
   try {
     const { email, password, reenterpassword } = req.body;
 
-    // check if the user is not exist
     const user = await userModel.findOne({ email });
     if (!user) {
       return res.json({ success: false, message: "User not found" });
     }
+
     const isMatched = await bcrypt.compare(password, user.password);
-
-    if (password !== reenterpassword) {
-      return res.json({
-        success: false,
-        message: "Two Password must be same.",
-      });
-    }
-
     if (isMatched) {
       return res.json({
         success: false,
@@ -174,17 +154,23 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Hasing User Password
+    if (password !== reenterpassword) {
+      return res.json({
+        success: false,
+        message: "Two passwords must be the same.",
+      });
+    }
+
+    // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(reenterpassword, salt);
 
-    // Updating user password
     user.password = hashedPassword;
     await user.save();
 
     res.json({ success: true, message: "Password changed successfully" });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.json({ success: false, message: error.message });
   }
 };
