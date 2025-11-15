@@ -2,11 +2,18 @@ import userModel from "../models/userModel.js";
 import validator from "validator";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import sendMail from "../config/sendMail.js";
+import registerOtpTemplate from "../templates/registerOtpTemplate.js";
+import loginOtpTemplate from "../templates/loginOtpTemplate.js";
+import resendRegisterOtpTemplate from "../templates/resendRegisterOtpTemplate.js";
+import resendLoginOtpTemplate from "../templates/resendLoginOtpTemplate.js";
 
 
 const createToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
+
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 // 🧑‍💻 User Login
 const loginUser = async (req, res) => {
@@ -19,19 +26,27 @@ const loginUser = async (req, res) => {
       return res.json({ success: false, message: "User not found" });
     }
 
+    if (!user.isVerified)
+      return res.json({ success: false, message: "Email not verified" });
+
     // Compare passwords
     const isMatched = await bcrypt.compare(password, user.password);
     if (!isMatched) {
       return res.json({ success: false, message: "Invalid credentials" });
     }
 
-    // Create token
-    const token = createToken(user._id);
-    res.json({
-      success: true,
-      message: "User logged in successfully",
-      token,
-    });
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+    await user.save();
+
+    await sendMail(
+      user.email,
+      "Your Login OTP",
+      loginOtpTemplate(otp, user.name)
+    );
+    res.json({ success: true, message: "OTP sent", userId: user._id, email: user.email });
+
   } catch (error) {
     console.error(error);
     res.json({ success: false, message: error.message });
@@ -46,7 +61,7 @@ const registerUser = async (req, res) => {
     // Check if user already exists
     const exists = await userModel.findOne({ email });
     if (exists) {
-      return res.json({ success: false, message: "User already exists" });
+      return res.json({ success: false, message: "Email Already Take!!" });
     }
 
     // Validate email
@@ -91,26 +106,55 @@ const registerUser = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    const otp = generateOTP();
+    const otpExpiry = Date.now() + 5 * 60 * 1000; // 5 min
+
     // Save new user
     const newUser = new userModel({
       name,
       email,
       password: hashedPassword,
+      otp,
+      otpExpiry,
     });
 
     const user = await newUser.save();
-    const token = createToken(user._id);
+
+    await sendMail(
+      email,
+      "Verify Your Email",
+      registerOtpTemplate(otp, name)
+    );
 
     res.json({
       success: true,
       message: "User registered successfully",
-      token,
+      user: user
     });
   } catch (error) {
     console.error(error);
     res.json({ success: false, message: "Error registering user" });
   }
 };
+
+const verifyOTP = async (req, res) => {
+  const { userId, otp } = req.body;
+
+  const user = await userModel.findById(userId);
+  if (!user) return res.json({ success: false, message: "User not found" });
+
+  if (user.otp !== otp || user.otpExpiry < Date.now()) {
+    return res.json({ success: false, message: "Invalid or expired OTP" });
+  }
+
+  user.isVerified = true;
+  user.otp = null;
+  user.otpExpiry = null;
+  await user.save();
+
+  res.json({ success: true, message: "Email verified successfully" });
+};
+
 
 // 👑 Admin Login
 const adminLogin = async (req, res) => {
@@ -175,4 +219,86 @@ const changePassword = async (req, res) => {
   }
 };
 
-export { loginUser, registerUser, adminLogin, changePassword };
+const verifyLoginOTP = async (req, res) => {
+  const { userId, otp } = req.body;
+
+  const user = await userModel.findById(userId);
+  if (!user) return res.json({ success: false, message: "User not found" });
+
+  if (user.otp !== otp || user.otpExpiry < Date.now()) {
+    return res.json({ success: false, message: "Invalid or expired OTP" });
+  }
+
+  user.otp = null;
+  user.otpExpiry = null;
+  await user.save();
+
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
+
+  res.json({
+    success: true,
+    message: "Login successful",
+    token,
+  });
+};
+
+const resendRegisterOTP = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    const user = await userModel.findById(userId);
+    if (!user) return res.json({ success: false, message: "User not found" });
+
+    if (user.isVerified)
+      return res.json({ success: false, message: "Email already verified" });
+
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+    await user.save();
+
+    await sendMail(
+      user.email,
+      "New Email Verification OTP",
+      resendRegisterOtpTemplate(otp, user.name)
+    );
+
+    res.json({ success: true, message: "New OTP sent successfully" });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: "Failed to resend OTP" });
+  }
+};
+
+const resendLoginOTP = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    const user = await userModel.findById(userId);
+    if (!user) return res.json({ success: false, message: "User not found" });
+
+    if (!user.isVerified)
+      return res.json({ success: false, message: "Email not verified" });
+
+    const otp = generateOTP();
+    user.otp = otp;
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+    await user.save();
+
+    await sendMail(
+      user.email,
+      "New Login OTP",
+      resendLoginOtpTemplate(otp, user.name)
+    );
+
+    res.json({ success: true, message: "New login OTP sent successfully" });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, message: "Failed to resend login OTP" });
+  }
+};
+
+
+export { loginUser, registerUser, adminLogin, changePassword, verifyOTP, verifyLoginOTP, resendLoginOTP, resendRegisterOTP };
