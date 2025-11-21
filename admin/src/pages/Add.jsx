@@ -47,10 +47,8 @@ const Add = ({ token }) => {
     const newSize = customSize.trim().toUpperCase();
 
     if (!newSize) return toast.error("Enter a valid size");
-    if (defaultSizes.includes(newSize))
-      return toast.error("This size already exists");
-    if (sizes.some((s) => s.size === newSize))
-      return toast.error("Size already added");
+    if (defaultSizes.includes(newSize)) return toast.error("This size already exists");
+    if (sizes.some((s) => s.size === newSize)) return toast.error("Size already added");
 
     setSizes((prev) => [...prev, { size: newSize, stock: 0 }]);
     setCustomSize("");
@@ -210,12 +208,7 @@ const Add = ({ token }) => {
         <p className="mb-2 font-semibold">Product Sizes + Stock</p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {[
-            ...defaultSizes,
-            ...sizes
-              .map((s) => s.size)
-              .filter((sz) => !defaultSizes.includes(sz)),
-          ].map((size) => {
+          {[...defaultSizes, ...sizes.map((s) => s.size).filter((sz) => !defaultSizes.includes(sz))].map((size) => {
             const selected = sizes.find((s) => s.size === size);
 
             return (
